@@ -53,6 +53,8 @@ export interface TelegramRoute {
 export interface BotConfig extends StellarConfig {
   botToken: string;
   chatId: string;
+  /** Chats allowed to use /status. Empty array means no restriction. */
+  allowedChatIds: string[];
   /** Telegram user id allowed to run operator-only commands. Null disables them. */
   operatorTelegramUserId: string | null;
   pollIntervalMs: number;
@@ -229,42 +231,29 @@ function collector(profile: Record<string, string>) {
       return value;
     },
 
-    routes(name: string): TelegramRoute[] | undefined {
-      const value = read(name);
-      if (value === undefined) return undefined;
-      try {
-        const parsed = JSON.parse(value);
-        if (!Array.isArray(parsed)) {
-          problems.push(`${name} must be a JSON array; got "${value}"`);
-          return undefined;
-        }
-        const parsedRoutes: TelegramRoute[] = [];
-        for (let i = 0; i < parsed.length; i++) {
-          const r = parsed[i];
-          if (typeof r !== "object" || r === null) {
-            problems.push(`${name}[${i}] must be an object`);
-            continue;
-          }
-          if (typeof r.chatId !== "string" || (!/^-?\d+$/.test(r.chatId) && !/^@[A-Za-z0-9_]{4,}$/.test(r.chatId))) {
-            problems.push(`${name}[${i}].chatId must be a numeric chat id or @channelusername`);
-          }
-          let preview = false;
-          if (r.channelPreviewMode !== undefined) {
-            if (typeof r.channelPreviewMode !== "boolean") {
-              problems.push(`${name}[${i}].channelPreviewMode must be a boolean`);
-            } else {
-              preview = r.channelPreviewMode;
-            }
-          }
-          parsedRoutes.push({ chatId: String(r.chatId), channelPreviewMode: preview });
-        }
-        return parsedRoutes;
-      } catch (err) {
-        problems.push(`${name} must be valid JSON; got "${value}"`);
-        return undefined;
-      }
-    },
+    /**
+     * Parses an optional comma-separated list of chat ids / @usernames.
+     * Returns an empty array when the variable is absent or empty (= no
+     * restriction). Each entry is validated with the same rules as chatId.
+     */
+    allowedChatIds(name: string): string[] {
+      const raw = read(name);
+      if (raw === undefined) return [];
 
+      const entries = raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      for (const entry of entries) {
+        if (!/^-?\d+$/.test(entry) && !/^@[A-Za-z0-9_]{4,}$/.test(entry)) {
+          problems.push(
+            `${name} contains an invalid entry "${entry}" — ` +
+              `each value must be a numeric chat id or a @channelusername`,
+          );
+        }
+      }
+      return entries;
     optionalUserId(name: string): string | null {
       const value = read(name);
       if (value === undefined) return null;
@@ -323,7 +312,8 @@ export function loadConfig(): BotConfig {
   const config: BotConfig = {
     ...stellar,
     botToken: c.required("BOT_TOKEN"),
-    chatId: fallbackChatId,
+    chatId: c.chatId("TELEGRAM_CHAT_ID"),
+    allowedChatIds: c.allowedChatIds("ALLOWED_CHAT_IDS"),
     operatorTelegramUserId: c.optionalUserId("OPERATOR_TELEGRAM_USER_ID"),
     pollIntervalMs: c.int("POLL_INTERVAL_MS", DEFAULTS.pollIntervalMs, DEFAULTS.minPollIntervalMs),
     startLookbackLedgers: c.int("START_LOOKBACK_LEDGERS", DEFAULTS.startLookbackLedgers, 0),
