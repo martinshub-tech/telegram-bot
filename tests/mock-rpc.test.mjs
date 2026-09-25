@@ -155,6 +155,7 @@ function botConfig(cursorFile, mock, overrides = {}) {
     healthHost: "127.0.0.1",
     healthPort: 0,
     healthStaleMs: 90000,
+    routes: [{ chatId: "-1001234567890", channelPreviewMode: false }],
     ...overrides,
   };
 }
@@ -377,7 +378,7 @@ test("a stale cursor fails the scan while the cursor is preserved", async () => 
   const sends = [];
   let poller;
   try {
-    poller = await runPoller(botConfig(file, mock), (text) => {
+    poller = await runPoller(botConfig(file, mock), (chatId, text) => {
       sends.push(text);
     });
     await waitFor(() => poller.status().consecutiveFailures >= 1, "stale cursor failure");
@@ -420,7 +421,7 @@ test("injected JSON-RPC failures stay bounded, redacted, and recover", async () 
   const sends = [];
   let poller;
   try {
-    poller = await runPoller(botConfig(file, mock), (text) => {
+    poller = await runPoller(botConfig(file, mock), (chatId, text) => {
       sends.push(text);
     });
     await waitFor(() => poller.status().consecutiveFailures >= 1, "injected failure");
@@ -483,7 +484,7 @@ test("HTTP-shaped 429/500 failures are survivable and actionable", async () => {
   let poller;
   try {
     // No cursor file: cold start, so a cursor appearing would mean drift.
-    poller = await runPoller(botConfig(path.join(dir, "cursor.mock.json"), mock), (text) => {
+    poller = await runPoller(botConfig(path.join(dir, "cursor.mock.json"), mock), (chatId, text) => {
       sends.push(text);
     });
 
@@ -545,7 +546,7 @@ test("a malformed event is skipped with a bounded reason while the cursor advanc
   const sends = [];
   let poller;
   try {
-    poller = await runPoller(botConfig(file, mock), (text) => {
+    poller = await runPoller(botConfig(file, mock), (chatId, text) => {
       sends.push(text);
     });
     await waitFor(
@@ -586,7 +587,7 @@ test("the per-cycle burst cap drops extras without losing cursor position", asyn
   const sends = [];
   let poller;
   try {
-    poller = await runPoller(botConfig(file, mock), (text) => {
+    poller = await runPoller(botConfig(file, mock), (chatId, text) => {
       sends.push(text);
     });
     await waitFor(
@@ -623,7 +624,7 @@ test("Telegram send failures: bounded retries, drop, cursor advances, token reda
   const attempts = [];
   let poller;
   try {
-    poller = await runPoller(botConfig(file, mock), (text) => {
+    poller = await runPoller(botConfig(file, mock), (chatId, text) => {
       attempts.push(text);
       return Promise.reject(new Error(`Too Many Requests (429): ${TOKEN}`));
     });
@@ -643,7 +644,7 @@ test("Telegram send failures: bounded retries, drop, cursor advances, token reda
     const text = cap.text();
     assert.match(text, /send attempt 1 failed, retrying in 1000ms: /);
     assert.match(text, /send attempt 2 failed, retrying in 2000ms: /);
-    assert.match(text, /send failed for claim_challenged at ledger 995 after retries: /);
+    assert.match(text, /send failed for claim_challenged at ledger 995 to chat -1001234567890 after retries: /);
     assert.ok(text.includes("[REDACTED]"), "token must be redacted in the failure line");
     assertBoundedLogs(cap.lines);
   } finally {
@@ -664,7 +665,7 @@ test("restart resumes from the version-1 cursor file with no replay and no drop"
   let poller1;
   let poller2;
   try {
-    poller1 = await runPoller(botConfig(file, mock), (text) => {
+    poller1 = await runPoller(botConfig(file, mock), (chatId, text) => {
       first.push(text);
     });
     const saved = await waitForCursorFile(

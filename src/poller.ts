@@ -112,8 +112,8 @@ function parseCursorFile(raw: string): CursorFile {
 export interface PollerDeps {
   config: BotConfig;
   server: rpc.Server;
-  /** Sends one already-formatted MarkdownV2 message. May reject. */
-  send: (text: string) => Promise<void>;
+  /** Sends one already-formatted MarkdownV2 message to a specific chat. May reject. */
+  send: (chatId: string, text: string) => Promise<void>;
 }
 
 /** Telegram tolerates ~20 messages/minute to one chat; stay under it. */
@@ -323,39 +323,47 @@ export function createPoller(deps: PollerDeps) {
         continue;
       }
 
-      const text = formatEvent(config, event);
-      if (text === null) {
+      let routeProcessed = false;
+
+      for (const route of config.routes) {
+        if (sentThisCycle >= config.maxNotificationsPerCycle) {
+          console.warn(
+            `[poller] cycle notification cap (${config.maxNotificationsPerCycle}) reached; ` +
+              `dropping ${event.payload.name} at ledger ${event.ledger} for chat ${route.chatId}`,
+          );
+          continue;
+        }
+
+        const routeConfig = { ...config, channelPreviewMode: route.channelPreviewMode };
+        const text = formatEvent(routeConfig, event);
+        
+        if (text === null) {
+          continue;
+        }
+        routeProcessed = true;
+
+        try {
+          // Use bounded retry for Telegram sends to handle transient failures
+          await sendWithRetry((t) => send(route.chatId, t), text, config.botToken);
+          status.notificationsSent += 1;
+          sentThisCycle += 1;
+        } catch (err) {
+          // All retries exhausted; drop the message but continue processing others.
+          status.notificationsFailed += 1;
+          failed += 1;
+          console.error(
+            `[poller] send failed for ${event.payload.name} at ledger ${event.ledger} to chat ${route.chatId} after retries: ` +
+              errorMessage(err),
+          );
+        }
+
+        if (sentThisCycle < config.maxNotificationsPerCycle) await sleep(SEND_SPACING_MS);
+      }
+      
+      if (!routeProcessed) {
         status.eventsSkipped += 1;
         skipped += 1;
-        continue;
       }
-
-      if (sentThisCycle >= config.maxNotificationsPerCycle) {
-        status.eventsSkipped += 1;
-        skipped += 1;
-        console.warn(
-          `[poller] cycle notification cap (${config.maxNotificationsPerCycle}) reached; ` +
-            `dropping ${event.payload.name} at ledger ${event.ledger}`,
-        );
-        continue;
-      }
-
-      try {
-        // Use bounded retry for Telegram sends to handle transient failures
-        await sendWithRetry(send, text, config.botToken);
-        status.notificationsSent += 1;
-        sentThisCycle += 1;
-      } catch (err) {
-        // All retries exhausted; drop the message but continue processing others.
-        status.notificationsFailed += 1;
-        failed += 1;
-        console.error(
-          `[poller] send failed for ${event.payload.name} at ledger ${event.ledger} after retries: ` +
-            errorMessage(err),
-        );
-      }
-
-      if (sentThisCycle < config.maxNotificationsPerCycle) await sleep(SEND_SPACING_MS);
     }
 
     return { sent: sentThisCycle, failed, skipped };

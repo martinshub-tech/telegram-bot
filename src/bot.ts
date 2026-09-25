@@ -220,9 +220,9 @@ export function createBot(deps: BotDeps): Bot {
 }
 
 /** The poller's send path: one message to the configured chat. */
-export function createNotifier(bot: Bot, config: BotConfig) {
-  return async (text: string): Promise<void> => {
-    await bot.api.sendMessage(config.chatId, text, TELEGRAM_OPTIONS);
+export function createNotifier(bot: Bot) {
+  return async (chatId: string, text: string): Promise<void> => {
+    await bot.api.sendMessage(chatId, text, TELEGRAM_OPTIONS);
   };
 }
 

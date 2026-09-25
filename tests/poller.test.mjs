@@ -55,6 +55,7 @@ function baseConfig(overrides = {}) {
     startLookbackLedgers: 60,
     cursorFile: "/tmp/test-cursor-not-real.json",
     maxNotificationsPerCycle: 5,
+    routes: [{ chatId: "-1001234567890", channelPreviewMode: false }],
     ...overrides,
   };
 }
@@ -322,7 +323,7 @@ test("poller: RPC failure for one target does not prevent the other from scannin
 
   const config = baseConfig({ cursorFile: `/tmp/rpc-fail-${Date.now()}.json`, pollIntervalMs: 9_999_999 });
   const sent = [];
-  const poller = createPoller({ config, server, send: async (msg) => { sent.push(msg); } });
+  const poller = createPoller({ config, server, send: async (chatId, msg) => { sent.push(msg); } });
 
   await poller.start();
   await new Promise((r) => setTimeout(r, 50));
@@ -582,7 +583,7 @@ test("poller: maxNotificationsPerCycle cap — events beyond cap are skipped", a
   const poller = createPoller({
     config,
     server,
-    send: async (msg) => { sent.push(msg); },
+    send: async (chatId, msg) => { sent.push(msg); },
   });
 
   await poller.start();
@@ -753,4 +754,122 @@ test("poller: targets list has exactly two entries (market and squad)", async ()
   assert.equal(st.targets.length, 2);
   const sources = st.targets.map((t) => t.source).sort();
   assert.deepEqual(sources, ["market", "squad"]);
+});
+
+test("poller: routing logic sends event to multiple chats, with distinct formatting per channelPreviewMode", async () => {
+  const tip = 5000;
+  const tipCursor = makeCursor(tip);
+  const { nativeToScVal, Address, Keypair } = await import("@stellar/stellar-sdk");
+  const fakeAddr = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 0x42)).publicKey();
+
+  const fakeEvent = {
+    id: "4900-0",
+    contractId: MARKET_ID,
+    ledger: 4900,
+    txHash: "abc",
+    ledgerClosedAt: "2026-01-01T00:00:00Z",
+    topic: [
+      nativeToScVal("claim_created", { type: "string" }),
+      nativeToScVal(1n, { type: "u64" }),
+      Address.account(Buffer.from(Keypair.fromPublicKey(fakeAddr).rawPublicKey())).toScVal()
+    ],
+    value: nativeToScVal({ category: "crypto" }),
+  };
+
+  let served = false;
+  const server = {
+    async getHealth() { return { status: "healthy", oldestLedger: 4000, latestLedger: tip }; },
+    async getEvents(req) {
+      if (req.filters?.[0]?.contractIds?.includes(MARKET_ID) && !served) {
+        served = true;
+        return { events: [fakeEvent], cursor: tipCursor, latestLedger: tip };
+      }
+      return { events: [], cursor: tipCursor, latestLedger: tip };
+    },
+  };
+
+  const config = baseConfig({
+    cursorFile: `/tmp/multi-routes-${Date.now()}.json`,
+    pollIntervalMs: 9_999_999,
+    routes: [
+      { chatId: "-1001", channelPreviewMode: false },
+      { chatId: "-1002", channelPreviewMode: true }
+    ]
+  });
+
+  const sent = [];
+  const poller = createPoller({ config, server, send: async (chatId, msg) => { sent.push({ chatId, msg }); } });
+
+  await poller.start();
+  await new Promise((r) => setTimeout(r, 2000));
+  poller.stop();
+
+  assert.equal(sent.length, 2, "should send to both routes");
+  
+  const msg1 = sent.find(s => s.chatId === "-1001");
+  const msg2 = sent.find(s => s.chatId === "-1002");
+  
+  assert.ok(msg1, "sent to first chat");
+  assert.ok(msg2, "sent to second chat");
+  assert.equal(msg1.msg.includes("[PREVIEW MODE]"), false, "first chat does not have preview mode");
+  assert.equal(msg2.msg.includes("[PREVIEW MODE]"), true, "second chat has preview mode");
+});
+
+test("poller: one chat failure does not affect other chats", async () => {
+  const tip = 5000;
+  const tipCursor = makeCursor(tip);
+  const { nativeToScVal, Address, Keypair } = await import("@stellar/stellar-sdk");
+  const fakeAddr = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 0x42)).publicKey();
+
+  const fakeEvent = {
+    id: "4900-0",
+    contractId: MARKET_ID,
+    ledger: 4900,
+    txHash: "abc",
+    ledgerClosedAt: "2026-01-01T00:00:00Z",
+    topic: [
+      nativeToScVal("claim_created", { type: "string" }),
+      nativeToScVal(1n, { type: "u64" }),
+      Address.account(Buffer.from(Keypair.fromPublicKey(fakeAddr).rawPublicKey())).toScVal()
+    ],
+    value: nativeToScVal({ category: "crypto" }),
+  };
+
+  let served = false;
+  const server = {
+    async getHealth() { return { status: "healthy", oldestLedger: 4000, latestLedger: tip }; },
+    async getEvents(req) {
+      if (req.filters?.[0]?.contractIds?.includes(MARKET_ID) && !served) {
+        served = true;
+        return { events: [fakeEvent], cursor: tipCursor, latestLedger: tip };
+      }
+      return { events: [], cursor: tipCursor, latestLedger: tip };
+    },
+  };
+
+  const config = baseConfig({
+    cursorFile: `/tmp/multi-fail-${Date.now()}.json`,
+    pollIntervalMs: 9_999_999,
+    routes: [
+      { chatId: "-1001", channelPreviewMode: false },
+      { chatId: "-1002", channelPreviewMode: false }
+    ]
+  });
+
+  const sent = [];
+  const poller = createPoller({
+    config,
+    server,
+    send: async (chatId, msg) => {
+      if (chatId === "-1001") throw new Error("Failed to send to first chat");
+      sent.push({ chatId, msg });
+    }
+  });
+
+  await poller.start();
+  await new Promise((r) => setTimeout(r, 6000));
+  poller.stop();
+
+  assert.equal(sent.length, 1, "should send to the second chat despite first failing");
+  assert.equal(sent[0].chatId, "-1002", "second chat received the message");
 });

@@ -72,18 +72,18 @@ async function main(): Promise<void> {
   // The bot needs the poller's status and the poller needs the bot's send path,
   // so one edge of the cycle is late-bound. This one, because it is the only
   // one that is a single function reference.
-  let notify: (text: string) => Promise<void> = async () => {
+  let notify: (chatId: string, text: string) => Promise<void> = async () => {
     throw new Error("telegram notifier not ready");
   };
 
-  const poller = createPoller({ config, server, send: (text) => notify(text) });
+  const poller = createPoller({ config, server, send: (chatId, text) => notify(chatId, text) });
   const bot = createBot({
     config,
     status: () => poller.status(),
     pause: () => poller.pause(),
     resume: () => poller.resume(),
   });
-  notify = createNotifier(bot, config);
+  notify = createNotifier(bot);
 
   // Local-only health HTTP for supervisors. Starts before Telegram long-poll
   // so a deploy probe can see the process even while grammy is connecting.
