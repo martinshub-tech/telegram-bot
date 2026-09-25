@@ -56,6 +56,7 @@ function cursorPreview(cursor: string | null): string {
 }
 
 function statusMessage(config: BotConfig, status: PollerStatus): string {
+  const nowMs = Date.now();
   const lines: string[] = [
     `*Status* — ${status.paused ? "paused" : status.running ? "running" : "stopped"} on Stellar ${networkLabel(config)}`,
     `Channel preview: ${config.channelPreviewMode ? "enabled" : "disabled"}`,

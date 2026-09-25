@@ -366,9 +366,8 @@ test("decodeEvent: squad unknown event yields unknown/no decoder", () => {
 
 // ── Oversized strings / clip() in formatEvent ────────────────────────────────
 
-test("formatEvent: long category in claim_created is rendered without truncation", () => {
-  // claim_created renders the category directly; there is no clip() call there,
-  // but it should still not throw or produce bad markdown.
+test("formatEvent: long category in claim_created is safely truncated", () => {
+  // PR 250 added safe truncation for oversized event fields.
   const config = {
     chatId: "-1",
     marketContractId: "market",
@@ -390,8 +389,9 @@ test("formatEvent: long category in claim_created is rendered without truncation
   let msg;
   assert.doesNotThrow(() => { msg = formatEvent(config, event); });
   assert.ok(msg !== null, "should produce a message");
-  // The full category is in the message (no truncation at this field)
-  assert.ok(msg.includes(escapeMd(longCategory)));
+  // The category should be safely truncated, so the message won't contain the full 500 chars
+  assert.ok(!msg.includes(escapeMd(longCategory)));
+  assert.ok(msg.includes(escapeMd("a".repeat(150)))); // It should include at least a chunk of it
 });
 
 test("formatEvent: claim_resolved summary is clipped at 200 characters", () => {

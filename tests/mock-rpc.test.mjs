@@ -406,7 +406,7 @@ test("a stale cursor fails the scan while the cursor is preserved", async () => 
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -469,7 +469,7 @@ test("injected JSON-RPC failures stay bounded, redacted, and recover", async () 
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -528,7 +528,7 @@ test("HTTP-shaped 429/500 failures are survivable and actionable", async () => {
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -571,7 +571,7 @@ test("a malformed event is skipped with a bounded reason while the cursor advanc
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -610,7 +610,7 @@ test("the per-cycle burst cap drops extras without losing cursor position", asyn
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -649,7 +649,7 @@ test("Telegram send failures: bounded retries, drop, cursor advances, token reda
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -677,7 +677,7 @@ test("restart resumes from the version-1 cursor file with no replay and no drop"
     assert.equal(first.length, 1, "the event behind the lookback is delivered once");
 
     poller1.stop();
-    await sleep(40);
+    await sleep(500);
 
     poller2 = await runPoller(botConfig(file, mock), (text) => {
       second.push(text);
@@ -716,7 +716,7 @@ test("restart resumes from the version-1 cursor file with no replay and no drop"
     poller1?.stop();
     poller2?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -746,7 +746,7 @@ test("a corrupt cursor file cold-starts instead of crashing", async () => {
   } finally {
     poller?.stop();
     cap.restore();
-    await sleep(40);
+    await sleep(500);
     await mock.close();
     await cleanup();
   }
@@ -889,9 +889,16 @@ test("mock:poll boots a credential-free dry run and shuts down cleanly", async (
     assert.ok(sendLine.length <= 300, `send preview not bounded: ${sendLine.length}`);
 
     child.kill("SIGTERM");
-    const [code] = await once(child, "exit");
-    assert.equal(code, 0, `expected clean exit, output:\n${out}`);
-    assert.ok(out.includes("[dry-run] SIGTERM received"), `no graceful stop in:\n${out}`);
+    const [code, signal] = await once(child, "exit");
+    
+    if (process.platform !== "win32") {
+      assert.equal(code, 0, `expected clean exit, output:\n${out}`);
+      assert.ok(out.includes("[dry-run] SIGTERM received"), `no graceful stop in:\n${out}`);
+    } else {
+      // Windows unconditionally terminates on SIGTERM, code is null, signal is SIGTERM
+      assert.equal(signal, "SIGTERM", `expected SIGTERM, output:\n${out}`);
+    }
+    
     assertBoundedLogs(
       out.split("\n").filter(Boolean).map((text) => ({ text })),
     );
