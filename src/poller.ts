@@ -193,7 +193,7 @@ export interface PollerDeps {
    * `source`, with the event's explorer button when `extra.reply_markup` is
    * set. May reject.
    */
-  send: (text: string, source?: ContractSource, extra?: SendExtra) => Promise<void>;
+  send: (chatId: string, text: string, extra?: SendExtra) => Promise<void>;
   sendOptions?: SendOptions;
   /** Circuit breaker configuration */
   circuitBreakerOptions?: CircuitBreakerOptions;
