@@ -63,8 +63,12 @@ export interface BotConfig extends StellarConfig {
   pollIntervalMs: number;
   startLookbackLedgers: number;
   cursorFile: string;
+  /** Exclusive lock so only one process owns the cursor. */
+  lockFile: string;
   statusFile: string;
   maxNotificationsPerCycle: number;
+  /** Append-only JSONL audit trail (see src/audit.ts). Empty disables it. */
+  auditFile: string;
   /**
    * Number of recent event ids retained per contract to suppress redelivery
    * across overlapping pages, resumed cursors, and restarts. `0` disables it.
@@ -115,8 +119,10 @@ const DEFAULTS = {
   minPollIntervalMs: 5_000,
   startLookbackLedgers: 60,
   cursorFile: "./data/cursor.json",
+  lockFile: "./data/poller.lock",
   statusFile: "./data/status.json",
   maxNotificationsPerCycle: 20,
+  auditFile: "./data/audit.jsonl",
   dedupWindow: 256,
   healthHost: "127.0.0.1",
   healthPort: 8787,
@@ -377,12 +383,15 @@ export function loadConfig(): BotConfig {
     pollIntervalMs: c.int("POLL_INTERVAL_MS", DEFAULTS.pollIntervalMs, DEFAULTS.minPollIntervalMs),
     startLookbackLedgers: c.int("START_LOOKBACK_LEDGERS", DEFAULTS.startLookbackLedgers, 0),
     cursorFile: path.resolve(process.cwd(), c.get("CURSOR_FILE") ?? DEFAULTS.cursorFile),
+    lockFile: path.resolve(process.cwd(), read("INSTANCE_LOCK_FILE") ?? DEFAULTS.lockFile),
     statusFile: path.resolve(process.cwd(), c.get("STATUS_FILE") ?? DEFAULTS.statusFile),
     maxNotificationsPerCycle: c.int(
       "MAX_NOTIFICATIONS_PER_CYCLE",
       DEFAULTS.maxNotificationsPerCycle,
       1,
     ),
+    // Resolved like the cursor file: relative paths anchor to the process cwd.
+    auditFile: path.resolve(process.cwd(), read("AUDIT_FILE") ?? DEFAULTS.auditFile),
     // 0 is the documented escape hatch: no redelivery suppression.
     dedupWindow: c.int("EVENT_DEDUP_WINDOW", DEFAULTS.dedupWindow, 0),
     healthHost: c.host("HEALTH_HOST", DEFAULTS.healthHost),
