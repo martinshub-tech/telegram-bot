@@ -640,7 +640,7 @@ test("Telegram send failures: bounded retries, drop, cursor advances, token reda
     const text = cap.text();
     assert.match(text, /send attempt 1 failed, retrying in 1000ms: /);
     assert.match(text, /send attempt 2 failed, retrying in 2000ms: /);
-    assert.match(text, /send failed for claim_challenged at ledger 995 after retries: /);
+    assert.match(text, /send failed for claim_challenged at ledger 995 to chat -1001234567890 after retries: /);
     assert.ok(text.includes("[REDACTED]"), "token must be redacted in the failure line");
     assertBoundedLogs(cap.lines);
   } finally {
@@ -878,7 +878,7 @@ test("mock:poll boots a credential-free dry run and shuts down cleanly", async (
     assert.match(out, /\[dry-run\] network\s+mock · rpc http:\/\/127\.0\.0\.1:\d+/);
     assert.match(out, new RegExp(`\\[dry-run\\] market\\s+${MOCK_MARKET_CONTRACT_ID}`));
     assert.ok(out.includes("cursor.mock.json"), "drill must use the isolated cursor file");
-    assert.match(out, /\[dry-run\] would send \d+ chars: /);
+    assert.match(out, /\[dry-run\] would send \d+ chars to /);
     assert.doesNotMatch(out, SECRET_RE, "no credential-shaped secret in dry-run output");
     assert.doesNotMatch(out, /MOCK-PROFILE-NOT-A-BOT-TOKEN/, "placeholder token never printed");
 

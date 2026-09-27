@@ -184,7 +184,7 @@ test("cold start with no cursor file: lookback scan, notify, persist", async (t)
   const poller = createPoller({
     config: makeConfig(dir),
     server,
-    send: async (text) => sent.push(text),
+    send: async (chatId, text) => sent.push(text),
   });
 
   await poller.start();
@@ -373,7 +373,7 @@ test("notification cap skips overflow events but the cursor still advances", asy
         claimChallenged({ ledger: 4_226_899, claimId: 2n }),
       ],
     }),
-    send: async (text) => sent.push(text),
+    send: async (chatId, text) => sent.push(text),
   });
 
   await poller.start();
@@ -395,7 +395,7 @@ test("undefined/unknown events are skipped without blocking the cursor", async (
     server: fakeRpc({
       market: [unknownEvent(), claimChallenged({ ledger: 4_226_899 })],
     }),
-    send: async (text) => sent.push(text),
+    send: async (chatId, text) => sent.push(text),
   });
 
   await poller.start();

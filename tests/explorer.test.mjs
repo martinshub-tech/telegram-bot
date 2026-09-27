@@ -91,7 +91,7 @@ test("notifier sends the exact Telegram payload: MarkdownV2 text + inline keyboa
     },
   };
 
-  await createNotifier(fakeBot, config)(text, undefined, { reply_markup: keyboard });
+  await createNotifier(fakeBot, config)(config.chatId, text, { reply_markup: keyboard });
 
   assert.deepEqual(sent, [
     [
@@ -124,7 +124,7 @@ test("notification routing still uses the configured chat id", async () => {
   const config = testnetConfig({ chatId: "@mychannel" });
   const sent = [];
   const fakeBot = { api: { sendMessage: async (...a) => { sent.push(a); return {}; } } };
-  await createNotifier(fakeBot, config)("hello");
+  await createNotifier(fakeBot, config)(config.chatId, "hello");
   assert.equal(sent[0][0], "@mychannel");
 });
 
@@ -142,7 +142,7 @@ test("missing transaction identifier means text-only, no button, no crash", asyn
 
     const sent = [];
     const fakeBot = { api: { sendMessage: async (...a) => { sent.push(a); return {}; } } };
-    await createNotifier(fakeBot, config)(message);
+    await createNotifier(fakeBot, config)(config.chatId, message);
     // Regression: no reply_markup key at all, exactly the old payload shape.
     assert.deepEqual(sent, [
       [config.chatId, message, { parse_mode: "MarkdownV2", link_preview_options: { is_disabled: true } }],
@@ -197,7 +197,7 @@ test("Telegram API failure propagates (bounded: the poller drops one message, no
     },
   };
   const notify = createNotifier(fakeBot, testnetConfig());
-  await assert.rejects(notify("text", undefined, { reply_markup: explorerKeyboard(testnetConfig(), claimChallengedEvent()) }), err429);
+  await assert.rejects(notify(testnetConfig().chatId, "text", { reply_markup: explorerKeyboard(testnetConfig(), claimChallengedEvent()) }), err429);
   assert.equal(calls, 1, "notifier must not retry internally");
 });
 
@@ -326,7 +326,7 @@ test("payloads and errors expose no tokens, keys, or unbounded remote objects", 
   const sent = [];
   const fakeBot = { api: { sendMessage: async (...a) => { sent.push(a); return {}; } } };
   const text = formatEvent(config, claimChallengedEvent());
-  await createNotifier(fakeBot, config)(text, undefined, { reply_markup: explorerKeyboard(config, claimChallengedEvent()) });
+  await createNotifier(fakeBot, config)(config.chatId, text, { reply_markup: explorerKeyboard(config, claimChallengedEvent()) });
   const wire = JSON.stringify(sent);
   assert.ok(!wire.includes("SECRET-TOKEN"));
   assert.ok(wire.length < 10_000, "bounded payload");

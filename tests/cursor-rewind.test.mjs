@@ -219,7 +219,7 @@ test("a cursor below the retained floor is rewound to the floor and the retained
     const poller = createPoller({
       config: makeConfig(cursorFile),
       server,
-      send: async (text) => {
+      send: async (chatId, text) => {
         sent.push(text);
       },
       sendOptions: { sendSpacingMs: 0 },
